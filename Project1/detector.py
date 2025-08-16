@@ -2,22 +2,21 @@ from flask import Flask, render_template, Response
 import cv2
 from ultralytics import YOLO
 from picamera2 import Picamera2
-import time
+import numpy as np
 
 app = Flask(__name__)
 
 # Load YOLO model
-model = YOLO("yolov5s.pt")
+model = YOLO("yolov8n.pt")   # use yolov8n for Pi (lighter than yolov5s)
 
 # COCO traffic-related classes
 traffic_classes = ['car', 'bus', 'truck', 'motorcycle', 'traffic light', 'stop sign']
 
 # Initialize Picamera2
 picam2 = Picamera2()
-config = picam2.create_preview_configuration(main={"format": "BGR888", "size": (640, 480)})
+config = picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)})
 picam2.configure(config)
 picam2.start()
-time.sleep(2)  # Allow camera to warm up
 
 def gen_frames():
     while True:
@@ -26,11 +25,9 @@ def gen_frames():
 
         # Run YOLO inference
         results = model(frame, verbose=False)
-
-        # Extract labels
         labels = [model.names[int(cls)] for cls in results[0].boxes.cls]
 
-        # Check if traffic detected
+        # Check if traffic-related object is detected
         is_traffic = any(label in traffic_classes for label in labels)
         label_text = "Traffic Detected" if is_traffic else "No Traffic"
         color = (0, 255, 0) if is_traffic else (0, 0, 255)
@@ -43,9 +40,10 @@ def gen_frames():
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
             cv2.putText(frame, cls_name, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
 
-        # Encode frame to JPEG
+        # Encode frame as JPEG
         _, buffer = cv2.imencode('.jpg', frame)
         frame_bytes = buffer.tobytes()
+
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
